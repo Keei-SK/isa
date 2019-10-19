@@ -92,7 +92,7 @@ __Termín odevzdání je 18.11.2019 (hard deadline).__ ***Odevzdání e-mailem p
 - Konzultace k projektu podává vyučující, který zadání vypsal.
 - Před odevzdáním zkontrolujte, zda jste dodrželi všechna jména souborů požadovaná ve společné části zadání i v zadání pro konkrétní projekt. Zkontrolujte, zda je projekt přeložitelný
 
-### Hodnocení projektu:###
+### Hodnocení projektu: ###
 __Maximální počet bodů za projekt je 20 bodů.__
 - **Maximálně 15 bodů za plně funkční aplikaci.**
 - **Maximálně 5 bodů za dokumentaci. Dokumentace se hodnotí pouze v případě funkčního kódu. Pokud kód není odevzdán nebo nefunguje podle zadání, dokumentace se nehodnotí.**
