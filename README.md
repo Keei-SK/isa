@@ -1,6 +1,6 @@
 # ISA 2019 - DNS Resolver #
 
-## Specifické zadání##
+## Specifické zadání ##
 __Popis:__
 Napište program dns, který bude umět zasílat dotazy na DNS servery a v čitelné podobě vypisovat přijaté odpovědi na standardní výstup. Sestavení a analýza DNS paketů musí být implementována přímo v programu dns. Stačí uvažovat pouze komunikaci pomocí UDP.
 
