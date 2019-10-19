@@ -1,11 +1,11 @@
-#ISA 2019 - DNS Resolver#
+# ISA 2019 - DNS Resolver #
 
-##Společné zadání##
+## Společné zadání ##
 ***Popis:***
 Vytvořte komunikující aplikaci podle konkrétní vybrané specifikace pomocí síťové knihovny BSD sockets (pokud není ve variantě zadání uvedeno jinak). Projekt bude vypracován v jazyce C/C++. Pokud individuální zadání nespecifikuje vlastní referenční systém, musí být projekt přeložitelný a spustitelný na serveru merlin.fit.vutbr.cz pod operačním systémem GNU/Linux. Program by však měl být přenositelný. Hodnocení projektů může probíhat na jiném počítači s nainstalovaným OS GNU/Linux, včetně jiných architektur než Intel/AMD, jiných distribucí, jiných verzí knihoven apod. Pokud vyžadujete minimální verzi knihovny (dostupnou na serveru merlin), jasně tuto skutečnost označte v dokumentaci a README.
 
 Vypracovaný projekt uložený v archívu .tar a se jménem xlogin00.tar odevzdejte elektronicky přes IS. Soubor nekomprimujte.
-Termín odevzdání je 18.11.2019 (hard deadline). Odevzdání e-mailem po uplynutí termínu, dodatečné opravy či doplnění kódu není možné.
+__Termín odevzdání je 18.11.2019 (hard deadline).__ Odevzdání e-mailem po uplynutí termínu, dodatečné opravy či doplnění kódu není možné.
 Odevzdaný projekt musí obsahovat:
 soubor se zdrojovým kódem (dodržujte jména souborů uvedená v konkrétním zadání),
 funkční Makefile pro překlad zdrojového souboru,
