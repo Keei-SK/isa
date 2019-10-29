@@ -33,12 +33,14 @@ string server;
 string address;
 
 
-
 int main(int argc, char *argv[]) {
     parse_args(argc, argv);
 
+    //Temporary debug listing
+    cout << "Debug:" << endl << "r_flag: " << r_flag << endl << "x_flag: " << x_flag << endl << "six_flag: " << six_flag
+    << endl << "s_flag: " << s_flag << endl << "Server: " << server << endl
+    << "p_flag: " << p_flag << endl << "Port: " << port << endl << "address_flag: " << address_flag << endl;
     return 0;
-
 }
 
 int parse_args(int argc ,char *argv[]){
@@ -52,15 +54,14 @@ int parse_args(int argc ,char *argv[]){
     }
 
     for (int i = 1; i < argc; ++i) {
-
         string old_param;
         string upcoming_param;
         string param = argv[i];
 
-        if(i != 1){
+        if(i > 1){
             old_param = argv[i-1];
         }
-        if(i != argc-1){
+        if(i < argc-1){
             upcoming_param = argv[i+1];
         }
 
@@ -82,7 +83,11 @@ int parse_args(int argc ,char *argv[]){
             }
             six_flag = true;
         }
-        else if((param == "-s") && (i < argc-1) && (upcoming_param[0] != '-')){
+        else if((param == "-s") && (i < argc-1)){
+            if(upcoming_param[0] == '-'){
+                cerr << "Error: -s parameter has invalid or missing argument!" << endl;
+                err_parse_args();
+            }
             if(s_flag){
                 err_dupl_args();
             }
@@ -91,7 +96,11 @@ int parse_args(int argc ,char *argv[]){
         else if((old_param == "-s") && (param[0] != '-') && s_flag){
             server = param;
         }
-        else if((param == "-p") && (i < argc-1) && (upcoming_param[0] != '-')){
+        else if((param == "-p") && (i < argc-1)){
+            if(upcoming_param[0] == '-'){
+                cerr << "Error: -p parameter has invalid or missing argument!" << endl;
+                err_parse_args();
+            }
             if(p_flag){
                 err_dupl_args();
             }
@@ -100,14 +109,14 @@ int parse_args(int argc ,char *argv[]){
         else if((old_param == "-p") && (param[0] != '-') && p_flag){
             for (unsigned long j = 0; j < strlen(argv[i]); j++) //param to neberie, preto argv[i]
             {
-                if (!isdigit(optarg[j])) {
+                if (!isdigit(param[j])) {
                     cerr << "Error: invalid character was located at the position of port number!" << endl;
                     err_parse_args();
                 }
             }
             port = stoi(param);
             if(port < 1 || port > 65535){ //TODO: CHECK VALID PORT RANGE
-                cerr << "Error: invalid port number. Use port in range 1-65535 or don't use the -p parameter" << endl;
+                cerr << "Error: invalid port number! Use port in range 1-65535 or don't use the -p parameter." << endl;
             }
         }
         else if(((old_param != "-p") || old_param != "-s") && (param[0] != '-')){
@@ -122,7 +131,7 @@ int parse_args(int argc ,char *argv[]){
             err_parse_args();
         }
     }
-    if(!(address_flag) && !(s_flag)){
+    if(!(address_flag) || !(s_flag)){ ///Skoci sem vobec niekedy ? Myslim ze nie
         cerr << "Error: server or address was not entered!" << endl;
         err_parse_args();
     }
