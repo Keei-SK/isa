@@ -3,7 +3,7 @@
 * VUT Login: xvanic09
 * Date: 2019-10-19
 * Author's comment: N/A
-*TODO:  Change makefile! remove http:// and https:// from server on stdin and add www.
+*TODO:  Change makefile! remove http:// and https:// from server on stdin and add www. Check inet_pton in main returns 1, as succ translate, else error.
 **/
 
 #include <iostream>
@@ -21,6 +21,8 @@ void err_parse_args();
 void err_dupl_args();
 void get_server_ip();
 void err_get_server_ip();
+bool is_valid_ipv4(const string& str_ip);
+bool is_valid_ipv6(const string& str_ip);
 
 /* Global variables */
 bool r_flag = false;
@@ -30,6 +32,7 @@ bool p_flag = false;
 
 bool s_flag = false;
 bool address_flag = false;
+bool server_is_ipv4 = false;
 
 int port = 53;
 string str_server;
@@ -44,6 +47,26 @@ string str_server_ip;
 int main(int argc, char *argv[]) {
     parse_args(argc, argv);
     get_server_ip();
+
+    const char * server_ip = str_server_ip.c_str();
+    if (is_valid_ipv4(str_server_ip) == 1){
+        server_is_ipv4 = true;
+
+        struct sockaddr_in sa{}; // IPv4
+        inet_pton(AF_INET, server_ip, &(sa.sin_addr)); // IPv4
+    }
+    else{
+
+        struct sockaddr_in6 sa{}; // IPv6
+        inet_pton(AF_INET6, server_ip, &(sa.sin6_addr)); // IPv6
+
+    }
+
+
+
+
+
+
 
 
 
@@ -88,16 +111,10 @@ void err_get_server_ip(){
     exit(EXIT_FAILURE);
 }
 
-bool is_valid_ipv4(const string& str)
+bool is_valid_ipv4(const string& str_ip)
 {
-    struct sockaddr_in sa{};
-    return inet_pton(AF_INET, str_server.c_str(), &(sa.sin_addr))!=0;
-}
-
-bool is_valid_ipv6(const string& str)
-{
-    struct sockaddr_in6 sa;
-    return inet_pton(AF_INET6, str_server.c_str(), &(sa.sin6_addr))!=0;
+    struct sockaddr_in sockaddr{};
+    return inet_pton(AF_INET, str_ip.c_str(), &(sockaddr.sin_addr))==1;
 }
 
 int parse_args(int argc ,char *argv[]){
