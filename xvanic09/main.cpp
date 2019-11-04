@@ -11,6 +11,8 @@
 
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+
 #include <arpa/inet.h>
 
 using namespace std;
@@ -22,7 +24,9 @@ void err_dupl_args();
 void get_server_ip();
 void err_get_server_ip();
 bool is_valid_ipv4(const string& str_ip);
-bool is_valid_ipv6(const string& str_ip);
+void err_invalid_ip();
+void connect_to_server();
+void err_connect_fail();
 
 /* Global variables */
 bool r_flag = false;
@@ -34,14 +38,16 @@ bool s_flag = false;
 bool address_flag = false;
 bool server_is_ipv4 = false;
 
-int port = 53;
+unsigned int port = 53;
 string str_server;
 string address;
 string str_server_ip;
 
+struct addrinfo hints{}, *infoptr;
+struct sockaddr_in sa4{}; // IPv4
+struct sockaddr_in6 sa6{}; // IPv6
 
-
-
+int sfd;
 
 
 int main(int argc, char *argv[]) {
@@ -49,22 +55,32 @@ int main(int argc, char *argv[]) {
     get_server_ip();
 
     const char * server_ip = str_server_ip.c_str();
-    if (is_valid_ipv4(str_server_ip) == 1){
+    if (is_valid_ipv4(str_server_ip) == 1){ //IT IS IPV4, ELSE IPV6! Validity of both already checked.
         server_is_ipv4 = true;
 
-        struct sockaddr_in sa{}; // IPv4
-        inet_pton(AF_INET, server_ip, &(sa.sin_addr)); // IPv4
+        if(inet_pton(AF_INET, server_ip, &(sa4.sin_addr)) != 1){
+            err_invalid_ip();
+        }
+        sa4.sin_port = htons(uint16_t (port));
+        sa4.sin_family = AF_INET;
+        sfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     }
     else{
 
-        struct sockaddr_in6 sa{}; // IPv6
-        inet_pton(AF_INET6, server_ip, &(sa.sin6_addr)); // IPv6
-
+        if(inet_pton(AF_INET6, server_ip, &(sa6.sin6_addr)) != 1){
+            err_invalid_ip();
+        }
+        sa6.sin6_port = htons(uint16_t (port));
+        sa6.sin6_family = AF_INET6;
+        sfd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
     }
 
+    if (sfd == -1){
+        cerr << "Error: Failed to create a socket!" << endl;
+        err_connect_fail();
+    }
 
-
-
+    connect_to_server();
 
 
 
@@ -79,10 +95,25 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+void connect_to_server(){
+    string msg = "hello";
+
+    if(server_is_ipv4){
+        connect(sfd, (const struct sockaddr*) &sa4, sizeof(sa4));
+        int send_succ = send(sfd, msg.c_str(), msg.length(), 0);
+        cout << send_succ << gai_strerror(send_succ) << endl;
+    }
+    else{
+        connect(sfd, (const struct sockaddr*) &sa6, sizeof(sa6));
+        int send_succ = send(sfd, msg.c_str(), msg.length(), 0);
+        cout << send_succ << gai_strerror(send_succ) << endl;
+    }
+}
+
+
 /*** Created using the informations obtained on the manual pages of function getaddrinfo() and getnameinfo().
  * Plus with the informations on website https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch ***/
 void get_server_ip(){
-    struct addrinfo hints{}, *infoptr; // So no need to use memset global variables
     const char * server = str_server.c_str();
 
     hints.ai_family = AF_UNSPEC; // AF_INET means IPv4 only addresses
@@ -106,8 +137,18 @@ void get_server_ip(){
     freeaddrinfo(infoptr);
 }
 
+void err_connect_fail(){
+    cerr << "Connection attempt failed. " << endl;
+    exit(EXIT_FAILURE);
+}
+
+void err_invalid_ip(){
+    cerr << "Error: Invalid format of IP address!" << endl;
+    exit(EXIT_FAILURE);
+}
+
 void err_get_server_ip(){
-    cerr << "Getting server IP failed." << endl;
+    cerr << "Getting server IP failed. " << endl;
     exit(EXIT_FAILURE);
 }
 
@@ -189,7 +230,7 @@ int parse_args(int argc ,char *argv[]){
                 }
             }
             port = stoi(param);
-            if(port < 1 || port > 65535){ //TODO: CHECK VALID PORT RANGE
+            if(port < 1 || port > 65535){
                 cerr << "Error: invalid port number! Use port in range 1-65535 or don't use the -p parameter." << endl;
             }
         }
