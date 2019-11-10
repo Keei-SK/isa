@@ -3,11 +3,13 @@
 * VUT Login: xvanic09
 * Date: 2019-10-19
 * Author's comment: N/A
-*TODO:  Change makefile! remove http:// and https:// from server on stdin and add www. Check inet_pton in main returns 1, as succ translate, else error.
+*TODO:  Change makefile!
 **/
 
 #include <iostream>
 #include <string>
+#include <algorithm>
+#include <vector>
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -24,7 +26,8 @@ void err_dupl_args();
 void get_server_info_and_send_a_packet();
 void err_get_server_info();
 void err_connect_fail();
-//bool is_valid_ipv4(const string& str_ip);
+void address_to_dns_format();
+bool check_address_is_ip();
 
 /* Global variables */
 bool r_flag = false;
@@ -36,74 +39,30 @@ bool address_flag = false;
 unsigned int port = 53;
 string str_server;
 string address;
+string address_dns_format;
+string address_backup;
 
 /* DNS Packet structre*/
 struct DNS_header
 {
-    unsigned short id :16; // identification number //is the ID number neened there ?
-    unsigned char qr :1; // query/response flag
-    unsigned char opcode :4; // purpose of message
-    unsigned char aa :1; // authoritive answer
-    unsigned char tc :1; // truncated message
-    unsigned char rd :1; // recursion desired
-    unsigned char ra :1; // recursion available
-    unsigned char z :3; // its z! reserved //that guy had it set at 1 bit, why ?
-    unsigned char rcode :4; // response code
+    uint16_t id; // identification number
+    uint16_t flags;
 
-    //unsigned char cd :1; // checking disabled
-    //unsigned char ad :1; // authenticated data
-
-    unsigned short q_count; // number of question entries
-    unsigned short an_count; // number of answer entries
-    unsigned short ns_count; // number of authority entries
-    unsigned short ar_count; // number of resource entries
+    uint16_t qd_count; // number of question entries
+    uint16_t an_count; // number of answer entries
+    uint16_t ns_count; // number of authority entries
+    uint16_t ar_count; // number of resource entries
 };
 
-struct DNS_Question //Constant sized fields of query structure
+struct DNS_Question
 {
-    //question name ???
-    unsigned short qtype;
-    unsigned short qclass;
+    uint16_t qtype;
+    uint16_t qclass;
 };
 
 int main(int argc, char *argv[]) {
     parse_args(argc, argv);
     get_server_info_and_send_a_packet();
-
-
-    /*
-     * int sfd;
-    const char * server_ip = str_server_ip.c_str();
-    if (is_valid_ipv4(str_server_ip) == 1){ //IT IS IPV4, ELSE IPV6! Validity of both already checked.
-        server_is_ipv4 = true;
-
-        if(inet_pton(AF_INET, server_ip, &(sa4.sin_addr)) != 1){
-            err_invalid_ip();
-        }
-        sa4.sin_port = htons(uint16_t (port));
-        sa4.sin_family = AF_INET;
-        sfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    }
-    else{
-
-        if(inet_pton(AF_INET6, server_ip, &(sa6.sin6_addr)) != 1){
-            err_invalid_ip();
-        }
-        sa6.sin6_port = htons(uint16_t (port));
-        sa6.sin6_family = AF_INET6;
-        sfd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-    }
-
-    if (sfd == -1){
-        cerr << "Error: Failed to create a socket!" << endl;
-        err_connect_fail();
-    }
-
-    connect_to_server();
-    */
-
-
-
 
    //Temporary debug listing
     cout << "Debug:" << endl << "r_flag: " << r_flag << endl << "x_flag: " << x_flag << endl << "six_flag: " << six_flag
@@ -117,10 +76,10 @@ int main(int argc, char *argv[]) {
 /*** Created using the informations obtained on the manual pages of function getaddrinfo() and getnameinfo().
  * Plus with the informations on website https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch ***/
 void get_server_info_and_send_a_packet(){
-    const char * port_ptr = to_string(port).c_str();
-    int sfd;
     struct addrinfo hints{}, *server_info, *available_ip;
     const char * server = str_server.c_str();
+    const char * port_ptr = to_string(port).c_str();
+    int sfd;
 
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_UNSPEC; ///AF_INET or AF_INET6, well who cares? I want atleast one valid IP, its type is irrelevant.
@@ -144,12 +103,56 @@ void get_server_info_and_send_a_packet(){
         }
         close(sfd);
     }
-    if (available_ip == nullptr) {               /* No address succeeded to connect */
+    if (available_ip == nullptr) {  /* No address succeeded to connect */
         err_connect_fail();
     }
-    string msg = "hello";
 
+    /**Creating DNS packet and filling it up with info**/ //TODO: check which arguments can and cannot be set by user, like are there restrictions to use both -6 and -x ?
+    unsigned char packet_buffer[512*8];
+    memset(packet_buffer, htons(0), sizeof(packet_buffer));
+    /*-DNS_Header-*/
+    struct DNS_header *dns_packet_header;
+    dns_packet_header = (struct DNS_header *)&packet_buffer;
+    dns_packet_header->id = htons((int) getpid());
+    uint16_t flags = 0x0;
+    if(x_flag) {
+        flags |= 0x1 << 11;
+    }
+    if(r_flag){
+        flags |= 0x1 << 8;
+    }
+    dns_packet_header->flags = htons(flags);
+    dns_packet_header->qd_count = htons((int)1);
+    dns_packet_header->an_count=0;
+    dns_packet_header->ns_count=0; //TODO: Not sure.
+    dns_packet_header->ar_count=0; //TODO: Not sure.
+
+    /*-DNS_Question-*/
+    if(!check_address_is_ip()){ //pokud adresa neni hostname, preloz ji na dns format
+        address_to_dns_format();
+    }
+    //todo: address not greater than 512bajts-implemented
+    char* pointer = (char *)dns_packet_header + sizeof(struct DNS_header);
+    strcpy(pointer, address.c_str());
+    struct DNS_Question *dnsquestion = (struct DNS_Question *)(pointer + 1 + address.length());
+    dnsquestion->qclass = htons(1);
+    if(six_flag){
+        dnsquestion->qtype = htons(28);
+    } else{
+        dnsquestion->qtype = htons(1);
+    }
+
+
+    int send_succ = send(sfd, (char*) packet_buffer, sizeof(struct DNS_header)+ 2 + address.length() +
+            sizeof(struct DNS_Question), 0);
+    /*
+     *
+     *
+     *
+
+    string msg = "hello";
     int send_succ = send(sfd, msg.c_str(), msg.length(), 0);
+     */
 
 
     /* PROBABLY NOT NEEDED ANYMORE!
@@ -163,10 +166,8 @@ void get_server_info_and_send_a_packet(){
     str_server_ip = host;
 
 
-
      freeaddrinfo(server_info);
     */
-
 
 
 }
@@ -180,12 +181,6 @@ void err_get_server_info(){
     cerr << "Getting server IP failed. " << endl;
     exit(EXIT_FAILURE);
 }
-
-/*bool is_valid_ipv4(const string& str_ip)
-{
-    struct sockaddr_in sockaddr{};
-    return inet_pton(AF_INET, str_ip.c_str(), &(sockaddr.sin_addr))==1;
-}*/
 
 int parse_args(int argc ,char *argv[]){
     if(argc < 4){
@@ -293,3 +288,42 @@ void err_dupl_args(){
     err_parse_args();
 }
 
+void address_to_dns_format(){
+    string rev, rev2;
+    for_each(address.crbegin(), address.crend(), [&rev] (char const &c) {
+        rev = rev.append(1, c);
+    });
+    rev = rev + ".";
+    int dotter = 0;
+    for (int i = 0; i < (int) rev.length(); i++) {
+        if((rev[i] != '.')){
+            dotter++;
+        }
+        else{
+            rev[i] = (char)dotter;
+            dotter = 0;
+        }
+    }
+    for_each(rev.crbegin(), rev.crend(), [&rev2] (char const &c) {
+        rev2 = rev2.append(1, c);
+    });
+    address = rev2;
+}
+
+bool check_address_is_ip(){
+    string temp = address;
+    if(((int) address.find(':', 0)) != -1){ //ak string neobsahuje ":" neni to ipv6
+        return true; //bola najdena ":", adresa je ipv6
+    }
+    else{
+        for(int i=0; i< ((int) temp.length()); i++){ //vsetky "." v adrese nahradime cislom a kontrolujeme ci string obsahuje ipba cisla, teda ci je to ipv4
+            if(temp[i]== '.'){
+                temp[i] = 1;
+            }
+            if(!(isdigit(temp[i]))){
+                return false; //bol najdeny iny znak nez cislo, adresa je teda hostname
+            }
+        }
+        return true; //string obsahuje iba cisla, je to ipv4
+    }
+}
