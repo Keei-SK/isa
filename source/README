@@ -1,0 +1,27 @@
+ISA projekt: DNS resolver
+Autor:	Jozef Vanický (xvanic09)
+
+Popis aplikácie:
+	Ide o aplikáciu, ktorá zasiela dotazy na DNS servery a v čitateľnej podobe vypisuje prijaté odpovede na štandardný výstup s použitím UDP komunikácie.
+
+Preklad:
+	make dns
+
+Spustenie testov:
+	make test
+
+Spustenie:
+	./dns [-r] [-x] [-6] -s server [-p port] adresa
+
+
+[-r] určuje, či je požadovaná rekurzia, v opačnom prípade je bez rekurzie
+[-x] určuje či je zadaný dotaz reverzný. Ak tento parameter chýba, je zadaný dotaz priamy.
+[-6] určuje či ide o dotaz typu AAAA miesto dotazu A
+ -s je povinný parameter nasledovaný IP adresou či domenovým  menom, kam sa má dotaz zaslať.
+ adresa určuje dotazovanú adresu užívateľa. Jedná sa samozrejme o povinný parameter.
+
+
+Voliteľné parametre sú označené hranatými zátvorkami. Parametre [-x] a [-6] nie je možné použiť súčastne.
+
+Obmedzenia:
+	K testom je potreba mať vytvorený priečinok tests a to hneď vedľa ostatných súborov aplikácie.

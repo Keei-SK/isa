@@ -1,0 +1,209 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[left= 1.5cm,text={18cm, 25cm},top=2.5cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{paralist}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{enumitem}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage[ddmmyyyy]{datetime}
+\usepackage{array}
+\pagestyle{plain}
+\pagenumbering{arabic}
+\usepackage[slovak]{babel}
+\usepackage{lmodern}
+
+
+\renewcommand*\contentsname{Obsah}
+
+\newdateformat{mydate}{\twodigit{\THEDAY}.{ }\shortmonthname[\THEMONTH] \THEYEAR}
+
+\pagenumbering{arabic}
+
+\usepackage{url}
+\DeclareUrlCommand\url{\def\UrlLeft{<}\def\UrlRight{>} \urlstyle{tt}}
+
+% \usepackage{indentfirst}
+
+\begin{document}
+\selectlanguage{slovak}
+
+\begin{titlepage}
+\begin{center}
+    {\Huge \textsc{Vysoké učení technické v Brně}}
+\vspace{\stretch{0.01}}
+    
+    {\LARGE \uppercase{FAKULTA INFORMAČNÍCH TECHNOLOGIÍ}}
+    
+\begin{figure}[h]
+\vspace{5.0cm}
+\centering
+\includegraphics[scale=0.15]{logo.png}
+\vspace{-10.0cm}
+\end{figure}
+    
+\vspace{\stretch{0.382}}
+	{\LARGE Projekt ISA, 2019Z}
+\vspace{\stretch{0.02}}
+
+	{\Huge \textbf{DNS resolver}}
+\vspace{\stretch{0.02}}\\
+
+{\LARGE {Programovanie sieťovej služby}}\\
+
+\begin{figure}[h]
+\centering
+{\Large {\mydate\today}}
+\vspace{6cm}
+\end{figure}
+
+\end{center}
+\begin{compactitem}
+\item[] Vanický Jozef, xvanic09
+\end{compactitem}
+
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Zadanie}
+Cieľom projektu bolo vypracovanie aplikácie, ktorá bude vedieť zasielať dotazy na DNS servery a v čitateľnej podobe vypisovať prijaté odpovede na štandardný výstup s použitím UDP komunikácie.
+
+\section{Úvod do DNS problematiky}
+Pretože počítače pracujú na úrovni binárnych dát, prenos dat po sieti prebieha takisto touto cestou. Každý počítač, server, či akékoľvek iné zariadenie, ktoré je schopné prijímať a odosielať data po sieti komunikuje za pomoci IP adresy, čo je sekvenia niekoľkých čísel. To znamená, že ak sa chcem pripojiť na nejakú webovú stránku potrebujem vedieť jej IP adresu. Pre človeka je však problematické pamätať si hromadu číselných sekvencií a práve tento problém rieši DNS. DNS mapuje IP adresy na ľahko zapamätateľné doménové názvy. Túto činnosť vykonáva server známy ako DNS Resolver. DNS Resolver nám dokáže skonvertovať doménové názvy na IP adresy a naopak. Zvyčajne je súčasťou veľkého decentralizovaného systému. DNS Resolver ktorý náš počítač defaultne kontaktuje, je zvyčajne zadaný poskytovateľom internetových služieb (ISP).
+
+\section{Základné informácie o aplikácií}
+Aplikácia sa dotazuje zadaného servera na záznam, teda IP adresu, či doménove a ďalšie parametre na základe zadaných argumentov užívateľa. Ako prvé sú spracované argumenty užívateľa, ak nie je zadaný niektorý z povinných argumentov, alebo je zadaný duplicitný argumen, nevalidný názov servera či adresy, alebo port mimo povolený rozsah, aplikácia sa ukonči s chybou. Na základe týchto argumentov prebieha ďalšia činnosť. 
+Aplikácia využije systémový DNS resolver na získanie IP adresy dotazovaného servera. Tento resolver vráti odpoveď v podobe niekoľných dostupných IP adries pridelených k zadanému doménovému názvu servera. 
+
+Následne sa aplikácia pokúša postupne pripojiť aspoň na jednu z dostupných IP adries. Ak sa jej to nepodarí, nasleduje jej ukončenie s chybou. V opačnom prípade túto adresu použije v ďalších krokoch. 
+
+Pokial teda bola nájdená aspoň jedna dostupná IP adresa, je na základe zadaných parametrov užívateľa zostrojený paket obsahujúci hlavne dotazované doménove meno, alebo adresu. Tento paket je zaslaný na IP adresu, ktorá bola získaná v predchodzom kroku. Zároveň je s IP adresou zadaný aj port na ktorý sa paket odošle. Ak tento port nie je zadaný užívateľom, je použitý defaultný teda štandardný port s číslom 53. Pokiaľ sa paket nepodarilo odoslať, je aplikácia ukočená s chybou. 
+
+Následne je navrátený paket obsahujúci odpoveď na zadaný dotaz. Z tohto paketu nám aplikácia vypíše, či bola odpoveď skrátená, či je odpoveď autoritatívna a rekurzívna. Zároveň získame informácie Obsahujúce parametre zadaného dotazu, odpoveď na zadaný dotaz obsahujúci informácie z dotazu, hodnotu TTL a samozrejme IP adresu či doménove meno (záleží na dotaze užívateľa) V ďalších sekciách sú obsiahnuté NS záznamy či SOA záznamy . Pokiaľ bola zadaná adresa nerozoznaná, je navrátený takzvaný SOA záznam. V prípade, že paket nebol prijatý, je aplikácia ukončená s chybou. 
+
+Detailné informácie o štruktúre DNS paketu, DNS komunikácii a ďalších podrobnostiach je možné vyhľadať v RFC1035 a RFC3596.
+
+\section{Kompatibilita}
+Aplikácia bola testovaná a je kompatibilná s OS GNU, a FreeBSD.
+
+\section{Preloženie aplikácie}
+Pred spustením aplikácie je potreba ju preložiť príkazom \textbf{make dns}
+
+V prípade varianty spustenia testov je potreba použiť príkaz \textbf{make test}, ktorý spustí už preddefinované testy. K tomuto účelu je potreba mať v systéme \textbf{k dispozícii program dig}.
+
+Preloženú aplikáciu je možné zmazať parametrom \textbf{make clean}.
+
+
+\section{Spustenie aplikácie}
+Aplikáciu je možné spustiť príkazom
+./dns [-r] [-x] [-6] -s server [-p port] adresa, kde
+\begin{itemize}
+    \item [-r] určuje, či je požadovaná rekurzia, v opačnom prípade je bez rekurzie
+    \item [-x] určuje či je zadaný dotaz reverzný. Ak tento parameter chýba, je zadaný dotaz priamy.
+    \item [-6] určuje či ide o dotaz typu AAAA miesto dotazu A
+    \item [-p] určuje port, na ktorý sa má dortaz odoslať. Východzí je port číslo 53.
+    \item -s je povinný parameter nasledovaný IP adresou či domenovým  menom, kam sa má dotaz zaslať.
+    \item adresa určuje dotazovanú adresu užívateľa. Jedná sa samozrejme o povinný parameter.
+\end{itemize}
+
+Voliteľné parametre sú označené hranatými zátvorkami.
+    
+    \textbf{Parametre [-x] a [-6] nie je možné použiť súčastne.}
+
+
+\section{Ukážka možného vstupu a výstupu}
+\textbf{./dns -s kazi.fit.vutbr.cz fit.vut.cz}
+
+Authoritative: Yes, Recursive: No, Truncated: No
+
+Question section (1)
+
+ fit.vut.cz., A, IN
+
+Answer section (1)
+
+ fit.vut.cz., A, IN, 14400, 147.229.9.26
+
+Authority section (4)
+
+ fit.vut.cz., NS, IN, 14400, kazi.fit.vutbr.cz.
+
+ fit.vut.cz., NS, IN, 14400, rhino.cis.vutbr.cz.
+
+ fit.vut.cz., NS, IN, 14400, gate.feec.vutbr.cz.
+
+ fit.vut.cz., NS, IN, 14400, guta.fit.vutbr.cz.
+
+Additional section (2)
+
+ rhino.cis.vutbr.cz., A, IN, 1436, 147.229.3.10
+
+ rhino.cis.vutbr.cz., AAAA, IN, 9380, 2001:67c:1220:e000::93e5:30a\\
+\\
+\textbf{./dns -s kazi.fit.vutbr.cz fit.vut.cz -p 53 -r}
+
+Authoritative: Yes, Recursive: Yes, Truncated: No
+
+Question section (1)
+
+ fit.vut.cz., A, IN
+
+Answer section (1)
+
+ fit.vut.cz., A, IN, 14400, 147.229.9.26
+
+Authority section (0)
+
+Additional section (0)\\
+\\
+\textbf{./dns -s kazi.fit.vutbr.cz fit.vut.cz -p 53 -x}
+
+Authoritative: Yes, Recursive: No, Truncated: No
+
+Question section (1)
+
+ cz.vut.fit.in-addr.arpa., PTR, IN
+
+Answer section (0)
+
+Authority section (1)
+
+ in-addr.arpa., SOA, IN, 3600, b.in-addr-servers.arpa. nstld.iana.org. 2019084701 1800 900 
+ 604800 3600
+
+Additional section (0)\\
+\\
+\newpage
+
+\textbf{./dns -s kazi.fit.vutbr.cz fit.vut.cz -p 53 -r -6}
+
+Authoritative: Yes, Recursive: Yes, Truncated: No
+
+Question section (1)
+
+ fit.vut.cz., AAAA, IN
+
+Answer section (1)
+
+ fit.vut.cz., AAAA, IN, 14400, 2001:67c:1220:809::93e5:91a
+
+Authority section (0)
+
+Additional section (0)
+
+
+\section{Zdroje}
+\begin{compactitem}
+\item Prezentácie predmetu ISA
+\item RFC1035 [https://tools.ietf.org/html/rfc1035]
+\item RFC3596 [https://tools.ietf.org/html/rfc3596]
+\end{compactitem}
+
+\end{document}
