@@ -5,3 +5,6 @@ dns: dns.cpp
 
 clean:
 	rm -f *.o dns
+
+test: dns
+	bash test.sh
