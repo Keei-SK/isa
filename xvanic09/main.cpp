@@ -3,7 +3,6 @@
 * VUT Login: xvanic09
 * Date: 2019-10-19
 * Author's comment: N/A
-*TODO:  Change makefile!
 **/
 
 #include <iostream>
@@ -18,59 +17,56 @@
 
 using namespace std;
 
-/* Function's prototypes */
-int parseArgs(int argc , char **argv);
+/*** Function's prototypes ***/
+int parseArgs(int argc , char **argv);  //Parse arguments from stdin.
+void get_server_info_and_send_a_packet();
+void formatStringToDNS();   //Format given address to dns valid dns format. www.vutbr.cz -> 3www5vutbr2cz
+void isIPv6();
+string reverseIPV4(string ip);
+string reverseIPV6(string ip);
+string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address);
+string parseType(uint16_t the_type);   //Parse data in pursuance of the question/answer type
+string parseClass(uint16_t the_class);  //Parse data in pursuance of the question/answer class
+string parseRDATA(uint16_t atype, unsigned char *ptr_to_pos, void* packet_header);  //Parse data in pursuance of the answer RDATA type
+string parseAnswer(void *packet_header, unsigned char **ptr_to_pos);    //Parse answer data to stdout
+
 void err_parseArgs();
 void err_duplArgs();
-void get_server_info_and_send_a_packet();
 void err_getServerInfo();
 void err_connectionFail();
-void formatStringToDNS();
-bool isIP();
-string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address);
-string parseType(uint16_t qtype);
-string parseClass(uint16_t qclass);
-string parseRDATA(uint16_t atype, unsigned char *ptr_to_pos, void* packet_header);
-string parseAnswer(void *packet_header, unsigned char **ptr_to_pos);
 
-/* Global variables */
-bool r_flag = false;
-bool x_flag = false;
-bool six_flag = false;
-bool p_flag = false;
-bool s_flag = false;
-bool address_flag = false;
+/*** Global variables ***/
+bool r_flag, x_flag, six_flag, port_flag, server_flag, address_flag = false;
 unsigned int port = 53;
-string str_server;
+string server;
 string address;
 
 bool ipv4_flag = false;
 bool ipv6_flag = false;
 
-/* DNS Packet structre*/
-struct DNS_header
-{
+/*** DNS Packet ***/
+struct DNS_header{
     uint16_t id; // identification number
     uint16_t flags; //|QR|Opcode|AA|TC|RD|RA|Z|RCODE|
     uint16_t qd_count; // number of question entries
-    uint16_t an_count; // number of answer entries
-    uint16_t ns_count; // number of authority entries
-    uint16_t ar_count; // number of resource entries
+    uint16_t an_count; // number of answers
+    uint16_t ns_count; // number of authorities
+    uint16_t ar_count; // number of additional
 };
 
-struct DNS_question
-{
+struct DNS_question{
     uint16_t qtype;
     uint16_t qclass;
 };
 
-struct DNS_answer
-{
+struct DNS_answer{
     uint16_t atype;
     uint16_t aclass;
     uint32_t ttl;
     uint16_t rd_length;
-} __attribute((packed));
+} __attribute((packed));    //attribute needed, otherwise compiler optimizes structure size
+
+
 
 int main(int argc, char *argv[]) {
     parseArgs(argc, argv);
@@ -79,11 +75,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/*** Created using the informations obtained on the manual pages of function getaddrinfo().
- * Plus with the informations on website https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch of Brian Hall***/
+/*
+ * Following documents were used for the implementation of this function:
+ * Man pages of getaddrinfo(),
+ * https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch of author Brian Hall.
+ * */
 void get_server_info_and_send_a_packet(){
     struct addrinfo hints{}, *server_info, *available_ip;
-    const char * server = str_server.c_str();
+    const char * serv = server.c_str();
     const char * port_ptr = to_string(port).c_str();
     int sfd;
 
@@ -93,7 +92,7 @@ void get_server_info_and_send_a_packet(){
     hints.ai_flags = AI_NUMERICSERV;
     hints.ai_protocol = IPPROTO_UDP;
 
-    int get_server_info = getaddrinfo(server, port_ptr, &hints, &server_info);
+    int get_server_info = getaddrinfo(serv, port_ptr, &hints, &server_info);
     if (get_server_info != 0) {
         cerr << "Error: Failed to obtain server info! " << gai_strerror(get_server_info) << endl;
         err_getServerInfo();
@@ -113,7 +112,7 @@ void get_server_info_and_send_a_packet(){
         err_connectionFail();
     }
 
-    /**Creating DNS packet and filling it up with info**/
+    /* Creating DNS packet and filling it up with info */
     unsigned char packet_buffer[512];
     memset(packet_buffer, 0, sizeof(packet_buffer));
     /*-DNS_Header-*/
@@ -130,32 +129,26 @@ void get_server_info_and_send_a_packet(){
     packet_header->ns_count=0;
     packet_header->ar_count=0;
 
-    /*-DNS_question-*/
-    if(!isIP()){ //pokud adresa je hostname, preloz ji na dns format
-        if(address.back() != '.'){
-            address = address+'.';
+    if(x_flag){
+        isIPv6();
+        if(ipv6_flag){
+            if(address.find(".ip6.arpa",0) == -1){
+                address = reverseIPV6(address);
+            }
         }
-        formatStringToDNS();
+        else{ //automaticky tu bude ipv4_flag na true
+            if(address.find(".in-addr.arpa",0) == -1){
+                address = reverseIPV4(address);
+            }
+        }
     }
-    else{ //TODO: Reverzni dotaz
-        if(x_flag){
-            if(ipv6_flag){
 
-            }
-            else{ //automaticky tu bude ipv4_flag na true
-                if(address.back() != '.'){
-                    address = address + '.';
-                    for (int i = 0; i < (int)address.length(); ++i) {
-                        address += address[i];
-                    }
-                    if(address[0] == '.'){
-                        address.erase(0,1);
-                    }
-                    address += "in-addr.arpa";
-                }
-            }
-        }
+    /*-DNS_question-*/
+    if(address.back() != '.'){
+        address = address + '.';
     }
+    formatStringToDNS();
+
     char* ptr_to_pos = (char *)packet_header + sizeof(struct DNS_header);
     if(address.length() > (sizeof(packet_buffer)- sizeof(struct DNS_header) - sizeof(struct DNS_question))){
         cerr << "Error: DNS Question is too long" << endl;
@@ -167,6 +160,9 @@ void get_server_info_and_send_a_packet(){
         dnsquestion->qtype = htons(28);
     } else{
         dnsquestion->qtype = htons(1);
+    }
+    if (x_flag) {
+        dnsquestion->qtype = htons(12);
     }
     dnsquestion->qclass = htons(1);
 
@@ -263,6 +259,53 @@ void get_server_info_and_send_a_packet(){
     cout << header_printout << endl << question_printout << endl << answer_printout << endl << authority_printout << endl << additional_printout << endl;
 }
 
+string reverseIPV4(string ip){
+    string tmp, final;
+    if(ip.back() != '.'){
+        ip += '.';
+    }
+    for (uint i = 0; i < ((uint) ip.length()); i++) {
+        tmp += ip[i];
+        if(ip[i] == '.'){
+            final = tmp + final;
+            tmp = "";
+        }
+    }
+    final += "in-addr.arpa.";
+    return final;
+};
+
+string reverseIPV6(string ip){
+    char ip_address[INET6_ADDRSTRLEN];
+    struct in6_addr binary;
+
+    strcpy(ip_address, ip.c_str());
+    inet_pton(AF_INET6, ip_address, &binary);
+    bzero(ip_address, INET6_ADDRSTRLEN);
+    //inet_ntop(AF_INET6, &binary, ip_address, INET6_ADDRSTRLEN);
+    sprintf(ip_address, "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x", (int)binary.s6_addr[0], (int)binary.s6_addr[1],
+    (int)binary.s6_addr[2], (int)binary.s6_addr[3],
+    (int)binary.s6_addr[4], (int)binary.s6_addr[5],
+    (int)binary.s6_addr[6], (int)binary.s6_addr[7],
+    (int)binary.s6_addr[8], (int)binary.s6_addr[9],
+    (int)binary.s6_addr[10], (int)binary.s6_addr[11],
+    (int)binary.s6_addr[12], (int)binary.s6_addr[13],
+    (int)binary.s6_addr[14], (int)binary.s6_addr[15]);
+
+    string string_ip = ip_address;
+    string dotted_ip;
+    for_each(string_ip.crbegin(), string_ip.crend(), [&dotted_ip] (char const &c) { //Reverse the address back.
+        if (c != ':') {
+            dotted_ip = dotted_ip.append(1, c);
+            dotted_ip = dotted_ip.append(1, '.');
+        }
+    });
+
+    dotted_ip += "ip6.arpa.";
+
+    return dotted_ip;
+};
+
 string parseAnswer(void *packet_header, unsigned char **ptr_to_pos) {
     struct DNS_answer answr = {0, 0, 0, 0};
 
@@ -357,7 +400,9 @@ string parseClass(uint16_t the_class){
     }
 }
 
-
+/*
+ * Modifies address from DNS format to normal hostname.
+ * 3www5vutbr2cz -> www.vutbr.cz */
 string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address) {
     string domain_name;
 
@@ -387,17 +432,7 @@ string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_addre
     return domain_name;
 }
 
-void err_connectionFail(){
-    cerr << "Connection attempt failed. " << endl;
-    exit(EXIT_FAILURE);
-}
-
-void err_getServerInfo(){
-    cerr << "Getting server IP failed. " << endl;
-    exit(EXIT_FAILURE);
-}
-
-int parseArgs(int argc , char **argv){ //getopt nebolo mozne pouzit kvoli problemom s "address" na pozicii pred ostatnymi parametrami
+int parseArgs(int argc , char **argv){
     if(argc < 4){
         cerr << "Error: required arguments missing!" << endl;
         err_parseArgs();
@@ -442,26 +477,26 @@ int parseArgs(int argc , char **argv){ //getopt nebolo mozne pouzit kvoli proble
                 cerr << "Error: -s parameter has invalid or missing argument!" << endl;
                 err_parseArgs();
             }
-            if(s_flag){
+            if(server_flag){
                 err_duplArgs();
             }
-            s_flag = true;
+            server_flag = true;
         }
-        else if((old_param == "-s") && (param[0] != '-') && s_flag){
-            str_server = param;
+        else if((old_param == "-s") && (param[0] != '-') && server_flag){
+            server = param;
         }
         else if((param == "-p") && (i < argc-1)){
             if(upcoming_param[0] == '-'){
                 cerr << "Error: -p parameter has invalid or missing argument!" << endl;
                 err_parseArgs();
             }
-            if(p_flag){
+            if(port_flag){
                 err_duplArgs();
             }
-            p_flag = true;
+            port_flag = true;
         }
-        else if((old_param == "-p") && (param[0] != '-') && p_flag){
-            for (unsigned long j = 0; j < strlen(argv[i]); j++) //param to neberie, preto argv[i]
+        else if((old_param == "-p") && (param[0] != '-') && port_flag){
+            for (unsigned long j = 0; j < strlen(argv[i]); j++)
             {
                 if (!isdigit(param[j])) {
                     cerr << "Error: invalid character was located at the position of port number!" << endl;
@@ -485,7 +520,7 @@ int parseArgs(int argc , char **argv){ //getopt nebolo mozne pouzit kvoli proble
             err_parseArgs();
         }
     }
-    if(!(address_flag) || !(s_flag)){ //Skoci sem vobec niekedy ? Myslim ze nie
+    if(!(address_flag) || !(server_flag)){
         cerr << "Error: server or address was not entered!" << endl;
         err_parseArgs();
     }
@@ -495,26 +530,17 @@ int parseArgs(int argc , char **argv){ //getopt nebolo mozne pouzit kvoli proble
     return 0;
 }
 
-void err_parseArgs(){
-    cerr << "Run program in the following construct:" << endl
-         << "   ./dns [-r] [-x] [-6] -s server [-p port] address" << endl
-         << "    It's not allowed to use -x and -6 flag together !" << endl;
-    exit(EXIT_FAILURE);
-}
-
-void err_duplArgs(){
-    cerr << "Error: argument duplicity!" << endl;
-    err_parseArgs();
-}
-
-void formatStringToDNS(){ //Prehadzuje adresu na vhodny dns format www.vutbr.cz -> 3www5vutbr2cz
+/*
+ * Modifies address to valid DNS format.
+ * www.vutbr.cz -> 3www5vutbr2cz */
+void formatStringToDNS(){
     string rev, rev2;
-    for_each(address.crbegin(), address.crend(), [&rev] (char const &c) {
+    for_each(address.crbegin(), address.crend(), [&rev] (char const &c) { //Reverse the address.
         rev = rev.append(1, c);
     });
     rev = rev + ".";
     int dotter = 0;
-    for (int i = 0; i < (int) rev.length(); i++) {
+    for (int i = 0; i < (int) rev.length(); i++) { //Replace every dot with the number of chars before it.
         if((rev[i] != '.')){
             dotter++;
         }
@@ -523,28 +549,45 @@ void formatStringToDNS(){ //Prehadzuje adresu na vhodny dns format www.vutbr.cz 
             dotter = 0;
         }
     }
-    for_each(rev.crbegin(), rev.crend(), [&rev2] (char const &c) {
+    for_each(rev.crbegin(), rev.crend(), [&rev2] (char const &c) { //Reverse the address back.
         rev2 = rev2.append(1, c);
     });
     address = rev2;
 }
 
-bool isIP(){
+/*** Auxiliary error functions ***/
+void err_parseArgs(){
+    cerr << "Run program in the following construct:" << endl
+         << "   ./dns [-r] [-x] [-6] -s server [-p port] address" << endl
+         << "    It's not allowed to use -x and -6 flag together !" << endl
+         << "[-r] Recursion desired." << endl
+         << "[-x] Reverse query." << endl
+         << "[-6] AAAA query type instead of default A type." << endl
+         << " -s  The IP address or domain name of the server where the query is to be sent." << endl
+         << "[-p port] Port number where the query is to be sent. Default option is 53." << endl
+         << "address means Address queried." << endl;
+    exit(EXIT_FAILURE);
+}
+
+void err_duplArgs(){
+    cerr << "Error: argument duplicity!" << endl;
+    err_parseArgs();
+}
+
+void err_getServerInfo(){
+    cerr << "Getting server IP failed. " << endl;
+    exit(EXIT_FAILURE);
+}
+
+void err_connectionFail(){
+    cerr << "Connection attempt failed. " << endl;
+    exit(EXIT_FAILURE);
+}
+
+void isIPv6(){
     string temp = address;
     if(((int) address.find(':', 0)) != -1){ //ak string neobsahuje ":" neni to ipv6
         ipv6_flag = true;
-        return true; //bola najdena ":", adresa je ipv6
     }
-    else{
-        for(int i=0; i< ((int) temp.length()); i++){ //vsetky "." v adrese nahradime cislom a kontrolujeme ci string obsahuje ipba cisla, teda ci je to ipv4
-            if(temp[i]== '.'){
-                temp[i] = 1;
-            }
-            if(!(isdigit(temp[i]))){
-                return false; //bol najdeny iny znak nez cislo, adresa je teda hostname
-            }
-        }
-        ipv4_flag = true;
-        return true; //string obsahuje iba cisla, je to ipv4
-    }
+    ipv4_flag = true;
 }
