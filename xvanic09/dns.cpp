@@ -6,7 +6,7 @@
 **/
 
 #include <iostream>
-#include <string>
+#include <string.h>
 #include <algorithm>
 #include <iterator>
 #include <netdb.h>
@@ -14,26 +14,27 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
 
 using namespace std;
 
 /*** Function's prototypes ***/
 int parseArgs(int argc , char **argv);  //Parse arguments from stdin.
-void get_server_info_and_send_a_packet();
+void getServInfoSendReceivePacket(); //Get info of server. Send query packet and receive answer packet.
 void formatStringToDNS();   //Format given address to dns valid dns format. www.vutbr.cz -> 3www5vutbr2cz
-void isIPv6();
-string reverseIPV4(string ip);
-string reverseIPV6(string ip);
-string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address);
+void isIPv6();  //Check if address is ipv6 or ipv4
+string reverseIPV4(string ip);  //Reverse IPv4 type address for usage with -x parameter
+string reverseIPV6(string ip);  //Reverse IPv6 type address for usage with -x parameter
+string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address);    //Format valid dns address to classic string. 3www5vutbr2cz -> www.vutbr.cz
 string parseType(uint16_t the_type);   //Parse data in pursuance of the question/answer type
 string parseClass(uint16_t the_class);  //Parse data in pursuance of the question/answer class
 string parseRDATA(uint16_t atype, unsigned char *ptr_to_pos, void* packet_header);  //Parse data in pursuance of the answer RDATA type
 string parseAnswer(void *packet_header, unsigned char **ptr_to_pos);    //Parse answer data to stdout
 
-void err_parseArgs();
-void err_duplArgs();
-void err_getServerInfo();
-void err_connectionFail();
+void err_parseArgs();   //Returns error if parsing arguments fails.
+void err_duplArgs();    //Returns error if stdin contains duplicates of arguments.
+void err_getServerInfo();   //Returns error if getting server information fails.
+void err_connectionFail();  //Returns error if connection to given server fails.
 
 /*** Global variables ***/
 bool r_flag, x_flag, six_flag, port_flag, server_flag, address_flag = false;
@@ -44,7 +45,7 @@ string address;
 bool ipv4_flag = false;
 bool ipv6_flag = false;
 
-/*** DNS Packet ***/
+/*** DNS Packet structures ***/
 struct DNS_header{
     uint16_t id; // identification number
     uint16_t flags; //|QR|Opcode|AA|TC|RD|RA|Z|RCODE|
@@ -66,55 +67,19 @@ struct DNS_answer{
     uint16_t rd_length;
 } __attribute((packed));    //attribute needed, otherwise compiler optimizes structure size
 
-
-
+/*** Main ***/
 int main(int argc, char *argv[]) {
     parseArgs(argc, argv);
-    get_server_info_and_send_a_packet();
+    getServInfoSendReceivePacket();
 
     return 0;
 }
 
-/*
- * Following documents were used for the implementation of this function:
- * Man pages of getaddrinfo(),
- * https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch of author Brian Hall.
- * */
-void get_server_info_and_send_a_packet(){
-    struct addrinfo hints{}, *server_info, *available_ip;
-    const char * serv = server.c_str();
-    const char * port_ptr = to_string(port).c_str();
-    int sfd;
-
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC; ///AF_INET or AF_INET6, well who cares? I want atleast one valid IP, its type is irrelevant.
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_NUMERICSERV;
-    hints.ai_protocol = IPPROTO_UDP;
-
-    int get_server_info = getaddrinfo(serv, port_ptr, &hints, &server_info);
-    if (get_server_info != 0) {
-        cerr << "Error: Failed to obtain server info! " << gai_strerror(get_server_info) << endl;
-        err_getServerInfo();
-    }
-
-    for(available_ip = server_info; available_ip != nullptr; available_ip = available_ip->ai_next) { //Just try to connect to one of received addresses, so we'll use it later
-        sfd = socket(available_ip->ai_family, SOCK_DGRAM, IPPROTO_UDP);
-        if (sfd == -1) {
-            continue;
-        }
-        if (connect(sfd, available_ip->ai_addr, available_ip->ai_addrlen) == 0) {
-            break;  ///Successfully connected!
-        }
-        close(sfd);
-    }
-    if (available_ip == nullptr) {  //No address succeeded to connect
-        err_connectionFail();
-    }
-
-    /* Creating DNS packet and filling it up with info */
+/*** Send DNS Query ***/
+void sendDNSQuestion(int sfd) {
     unsigned char packet_buffer[512];
     memset(packet_buffer, 0, sizeof(packet_buffer));
+
     /*-DNS_Header-*/
     struct DNS_header *packet_header;
     packet_header = (struct DNS_header *)&packet_buffer;
@@ -129,15 +94,16 @@ void get_server_info_and_send_a_packet(){
     packet_header->ns_count=0;
     packet_header->ar_count=0;
 
+    /* If user wants reverse query, make address a valid reverse DNS arpa format */
     if(x_flag){
         isIPv6();
         if(ipv6_flag){
-            if(address.find(".ip6.arpa",0) == -1){
+            if(address.find(".ip6.arpa",0) == string::npos){
                 address = reverseIPV6(address);
             }
         }
         else{ //automaticky tu bude ipv4_flag na true
-            if(address.find(".in-addr.arpa",0) == -1){
+            if(address.find(".in-addr.arpa",0) == string::npos){
                 address = reverseIPV4(address);
             }
         }
@@ -169,24 +135,30 @@ void get_server_info_and_send_a_packet(){
     int send_succ = send(sfd, (char*) packet_buffer, sizeof(struct DNS_header) + address.length() + sizeof(struct DNS_question), 0);
 
     if (send_succ == -1){
-        cerr << "Error: Request sending failed!";
+        cerr << "Error: Request sending failed!" << endl;
         exit(EXIT_FAILURE);
     }
+}
 
-    /**Getting answer**/
+/*** Receive DNS answer for our query ***/
+void recvDNSAnswer(int sfd, struct addrinfo *server_info, struct addrinfo *available_ip) {
+
     unsigned char answer[1472];
     memset(answer, 0, sizeof(answer));
+    unsigned char packet_buffer[512];
+
+    /* Getting answer */
     int recv_succ = recvfrom(sfd, answer, sizeof(answer), 0, available_ip->ai_addr, (socklen_t*)&(available_ip->ai_addrlen));
     if (recv_succ == -1){
-        cerr << "Error: Failed to obtain requested answer!";
+        cerr << "Error: Failed to obtain requested answer!" << endl;
         exit(EXIT_FAILURE);
     }
     close(sfd);
     freeaddrinfo(server_info);
     memset(packet_buffer, 0, sizeof(packet_buffer));
 
-    /**Reading answer**/
-    packet_header = (struct DNS_header*) answer;
+    /* Reading answer packet header section */
+    struct DNS_header *packet_header = (struct DNS_header*) answer;
     string header_printout = "Authoritative: ";
     if((ntohs(packet_header->flags) & 0x400) > 0x0){
         header_printout = header_printout + "Yes, ";
@@ -206,11 +178,13 @@ void get_server_info_and_send_a_packet(){
         header_printout = header_printout + "No";
     }
 
-    ptr_to_pos = (char *)packet_header + sizeof(struct DNS_header);
+    char* ptr_to_pos = (char *)packet_header + sizeof(struct DNS_header);
     if(ntohs(packet_header->qd_count) < 0x0001){
         cerr << "Error: Received zero questions!" << endl;
         exit(EXIT_FAILURE);
     }
+
+    /* Reading answer packet query section */
     string question_printout = "Question section (";
     question_printout += to_string(ntohs(packet_header->qd_count)) + ")" + "\n "; // Vypiseme pocet dotazu z odpovedi
 
@@ -220,45 +194,86 @@ void get_server_info_and_send_a_packet(){
         memcpy(&qst, ptr_to_pos, sizeof(struct DNS_question));
         question_printout += parseType(ntohs(qst.qtype)) + ", ";
         question_printout += parseClass(ntohs(qst.qclass));
-        if(i < ((ntohs(packet_header->qd_count))-1)){
-            question_printout += "\n";
-        }
+        question_printout += "\n";
         ptr_to_pos += sizeof(struct DNS_question);
     }
 
+    /* Reading answer packet answer section */
     string answer_printout = "Answer section (";
     answer_printout += to_string(ntohs(packet_header->an_count)) + ")" + "\n"; // Vypiseme pocet answers
     for (int i = 0; i < ntohs(packet_header->an_count); i++) {
         answer_printout += parseAnswer(packet_header, (unsigned char **)&ptr_to_pos);
-
-        if(i < ((ntohs(packet_header->an_count))-1)){
-            answer_printout += "\n";
-        }
+        answer_printout += "\n";
     }
 
+    /* Reading answer packet authority section */
     string authority_printout = "Authority section (";
     authority_printout += to_string(ntohs(packet_header->ns_count)) + ")" + "\n"; // Vypiseme pocet authority
     for (int i = 0; i < ntohs(packet_header->ns_count); i++) {
         authority_printout += parseAnswer(packet_header, (unsigned char **)&ptr_to_pos);
-
-        if(i < ((ntohs(packet_header->ns_count))-1)){
-            authority_printout += "\n";
-        }
+        authority_printout += "\n";
     }
 
+    /* Reading answer packet additional section */
     string additional_printout = "Additional section (";
     additional_printout += to_string(ntohs(packet_header->ar_count)) + ")" + "\n"; // Vypiseme pocet additionals
     for (int i = 0; i < ntohs(packet_header->ar_count); i++) {
         additional_printout += parseAnswer(packet_header, (unsigned char **)&ptr_to_pos);
-
-        if(i < ((ntohs(packet_header->ar_count))-1)){
-            additional_printout += "\n";
-        }
+        additional_printout += "\n";
     }
 
-    cout << header_printout << endl << question_printout << endl << answer_printout << endl << authority_printout << endl << additional_printout << endl;
+    /* Print whole answer to stdin */
+    cout << header_printout << endl << question_printout << answer_printout << authority_printout << additional_printout;
 }
 
+/*
+ * Following documents were used for the implementation of this function:
+ * Man pages of getaddrinfo(),
+ * https://beej.us/guide/bgnet/html//index.html#getaddrinfoprepare-to-launch of author Brian Hall.
+ * */
+/*** Get server IP and info, try to connect to one of returned IPs and call functions to send query and to receive answer ***/
+void getServInfoSendReceivePacket(){
+    int sfd;
+
+    struct addrinfo hints{}, *server_info, *available_ip;
+    const char * serv = server.c_str();
+    const char * port_ptr = to_string(port).c_str();
+
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC; //AF_INET or AF_INET6, well who cares? I want atleast one valid IP to connect to, its family is irrelevant.
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_NUMERICSERV;
+    hints.ai_protocol = 0;
+
+    int get_server_info = getaddrinfo(serv, port_ptr, &hints, &server_info);
+    if (get_server_info != 0) {
+        cerr << "Error: Failed to obtain server info! " << gai_strerror(get_server_info) << endl;
+        err_getServerInfo();
+    }
+
+    for(available_ip = server_info; available_ip != nullptr; available_ip = available_ip->ai_next) { //Just try to connect to one of received addresses, so we'll use it later
+        sfd = socket(available_ip->ai_family, SOCK_DGRAM, 0);
+        if (sfd == -1) {
+            continue;
+        }
+        if (connect(sfd, available_ip->ai_addr, available_ip->ai_addrlen) == 0) {
+            break;  ///Successfully connected!
+        }
+        close(sfd);
+    }
+    if (available_ip == nullptr) {  //No address succeeded to connect
+        err_connectionFail();
+    }
+
+    /* Creating DNS packet and filling it up with info */
+    sendDNSQuestion(sfd);
+
+    /* */
+    recvDNSAnswer(sfd, server_info, available_ip);
+
+}
+
+/*** Reverse IPv4 type address for usage with -x parameter ***/
 string reverseIPV4(string ip){
     string tmp, final;
     if(ip.back() != '.'){
@@ -273,8 +288,9 @@ string reverseIPV4(string ip){
     }
     final += "in-addr.arpa.";
     return final;
-};
+}
 
+/*** Reverse IPv6 type address for usage with -x parameter ***/
 string reverseIPV6(string ip){
     char ip_address[INET6_ADDRSTRLEN];
     struct in6_addr binary;
@@ -304,8 +320,9 @@ string reverseIPV6(string ip){
     dotted_ip += "ip6.arpa.";
 
     return dotted_ip;
-};
+}
 
+/*** Parse data from answer section of received packet ***/
 string parseAnswer(void *packet_header, unsigned char **ptr_to_pos) {
     struct DNS_answer answr = {0, 0, 0, 0};
 
@@ -322,7 +339,7 @@ string parseAnswer(void *packet_header, unsigned char **ptr_to_pos) {
     return answer_printout;
 }
 
-
+/*** Parse data in pursuance of the answer RDATA type ***/
 string parseRDATA(uint16_t atype, unsigned char *ptr_to_pos, void* packet_header){
     struct RDATA_SOA{
         uint32_t serial;
@@ -368,6 +385,7 @@ string parseRDATA(uint16_t atype, unsigned char *ptr_to_pos, void* packet_header
     }
 }
 
+/*** Parse data in pursuance of the question/answer type ***/
 string parseType(uint16_t the_type){
     switch (the_type) {
         case 1:
@@ -389,6 +407,7 @@ string parseType(uint16_t the_type){
     }
 }
 
+/*** Parse data in pursuance of the question/answer class ***/
 string parseClass(uint16_t the_class){
     switch (the_class) {
         case 1:
@@ -400,9 +419,7 @@ string parseClass(uint16_t the_class){
     }
 }
 
-/*
- * Modifies address from DNS format to normal hostname.
- * 3www5vutbr2cz -> www.vutbr.cz */
+/*** Modifies address from DNS format to normal hostname. 3www5vutbr2cz -> www.vutbr.cz ****/
 string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_address) {
     string domain_name;
 
@@ -432,6 +449,39 @@ string formatDNStoString(unsigned char **ptr_to_end_of_header, void* start_addre
     return domain_name;
 }
 
+/*** Modifies address to valid DNS format. www.vutbr.cz -> 3www5vutbr2cz ***/
+void formatStringToDNS(){
+    string rev, rev2;
+    for_each(address.crbegin(), address.crend(), [&rev] (char const &c) { //Reverse the address.
+        rev = rev.append(1, c);
+    });
+    rev = rev + ".";
+    int dotter = 0;
+    for (int i = 0; i < (int) rev.length(); i++) { //Replace every dot with the number of chars before it.
+        if((rev[i] != '.')){
+            dotter++;
+        }
+        else{
+            rev[i] = (char)dotter;
+            dotter = 0;
+        }
+    }
+    for_each(rev.crbegin(), rev.crend(), [&rev2] (char const &c) { //Reverse the address back.
+        rev2 = rev2.append(1, c);
+    });
+    address = rev2;
+}
+
+/*** Check if address is ipv6 or ipv4 ***/
+void isIPv6(){
+    string temp = address;
+    if(((int) address.find(':', 0)) != -1){ //ak string neobsahuje ":" neni to ipv6
+        ipv6_flag = true;
+    }
+    ipv4_flag = true;
+}
+
+/*** Parse arguments from stdin ***/
 int parseArgs(int argc , char **argv){
     if(argc < 4){
         cerr << "Error: required arguments missing!" << endl;
@@ -530,31 +580,6 @@ int parseArgs(int argc , char **argv){
     return 0;
 }
 
-/*
- * Modifies address to valid DNS format.
- * www.vutbr.cz -> 3www5vutbr2cz */
-void formatStringToDNS(){
-    string rev, rev2;
-    for_each(address.crbegin(), address.crend(), [&rev] (char const &c) { //Reverse the address.
-        rev = rev.append(1, c);
-    });
-    rev = rev + ".";
-    int dotter = 0;
-    for (int i = 0; i < (int) rev.length(); i++) { //Replace every dot with the number of chars before it.
-        if((rev[i] != '.')){
-            dotter++;
-        }
-        else{
-            rev[i] = (char)dotter;
-            dotter = 0;
-        }
-    }
-    for_each(rev.crbegin(), rev.crend(), [&rev2] (char const &c) { //Reverse the address back.
-        rev2 = rev2.append(1, c);
-    });
-    address = rev2;
-}
-
 /*** Auxiliary error functions ***/
 void err_parseArgs(){
     cerr << "Run program in the following construct:" << endl
@@ -563,8 +588,8 @@ void err_parseArgs(){
          << "[-r] Recursion desired." << endl
          << "[-x] Reverse query." << endl
          << "[-6] AAAA query type instead of default A type." << endl
-         << " -s  The IP address or domain name of the server where the query is to be sent." << endl
          << "[-p port] Port number where the query is to be sent. Default option is 53." << endl
+         << " -s  The IP address or domain name of the server where the query is to be sent." << endl
          << "address means Address queried." << endl;
     exit(EXIT_FAILURE);
 }
@@ -584,10 +609,3 @@ void err_connectionFail(){
     exit(EXIT_FAILURE);
 }
 
-void isIPv6(){
-    string temp = address;
-    if(((int) address.find(':', 0)) != -1){ //ak string neobsahuje ":" neni to ipv6
-        ipv6_flag = true;
-    }
-    ipv4_flag = true;
-}
