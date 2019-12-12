@@ -110,3 +110,28 @@ __Příklad kriterií pro hodnocení projektů:__
 - opsáno: 0 bodů (pro všechny, kdo mají stejný kód), návrh na zahájení disciplinárního řízení.
 
 
+## Výsledek hodnocení ##
+
+__16,5/20b__
+
+### Komentář učitele k hodnocení: ###
+
+- Podařilo se úspěšně komunikovat pomocí DNS
+- Podpora autoritativní odpovědi
+- Podpora odpovědi od neautoritativního serveru
+- Podpora CNAME při překladu na IPv6
+- Podpora AAAA
+- Podpora PTR
+- Chybí podpora PTR6 (zkrácený zápis adresy)
+- Chybí podpora PTR6 (plný zápis adresy)
+- Podpora CNAME při překladu na IPv4
+- Podpora CNAME při překladu na IPv6
+- Ošetřená chyba nepřítomného serveru
+- Podpora serveru zadaného adresou IP
+- Chybí podpora serveru zadaného adresou IPv6
+- Neúspěšné zpracování zprávy bez odpovědi
+- Zdrojový kód strukturovaný do funkcí
+- Relativně strohá dokumentace
+- Informativní README
+ 
+ 

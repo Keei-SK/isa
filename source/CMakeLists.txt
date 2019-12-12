@@ -3,4 +3,4 @@ project(xvanic09)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(xvanic09 main.cpp)
+add_executable(xvanic09 dns.cpp)
